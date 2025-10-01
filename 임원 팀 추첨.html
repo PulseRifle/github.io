@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>임원 팀 추첨</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        canvas {
+            cursor: pointer;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .result-item {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-5xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 relative overflow-hidden">
+        <!-- 중앙 배경 이미지 -->
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <img src="체육대회.jpg" alt="Background" class="w-1/2 opacity-5">
+        </div>
+
+        <!-- 좌측 상단 로고 -->
+        <img src="당사로고.jpg" alt="Company Logo" class="absolute top-6 left-8 w-40 h-auto">
+        
+        <div class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">임원 팀 추첨</h1>
+            <p class="text-slate-500 mt-2">참가자 이름을 클릭하여 결과를 확인하세요!</p>
+        </div>
+
+        <!-- Canvas for the ladder game -->
+        <div class="canvas-container mb-6 overflow-x-auto">
+            <canvas id="ladderCanvas"></canvas>
+        </div>
+
+        <!-- Controls and Results -->
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+            <button id="generateBtn" class="w-full md:w-auto bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-300 shadow-md">
+                새로운 사다리 생성
+            </button>
+            <div id="resultDisplay" class="text-center md:text-right font-semibold text-lg text-slate-700 h-8"></div>
+        </div>
+        
+        <!-- Results History -->
+        <div id="resultsHistory" class="mt-6 border-t pt-4">
+            <h2 class="text-xl font-bold text-center mb-4 text-slate-800">결과 기록</h2>
+            <div id="resultsList" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 text-center min-h-20">
+                <!-- Results will be appended here -->
+            </div>
+        </div>
+    </div>
+    
+    <footer class="text-center mt-8 text-slate-400 text-sm">
+        <p>코딩도우미 &copy; 2024. All Rights Reserved.</p>
+    </footer>
+
+<script>
+    const canvas = document.getElementById('ladderCanvas');
+    const ctx = canvas.getContext('2d');
+    const generateBtn = document.getElementById('generateBtn');
+    const resultDisplay = document.getElementById('resultDisplay');
+    const resultsList = document.getElementById('resultsList');
+
+    // --- 게임 설정 ---
+    const players = ['원종규', '정광식', '이진형', '소병기', '김준동', '전우정', '오세관', '권승수', '윤병익', '이재문', '신웅섭'];
+    const goalOptions = [
+        { text: '일류', color: '#ef4444' }, // red-500
+        { text: '창의', color: '#3b82f6' }, // blue-500
+        { text: '인재', color: '#eab308' }, // yellow-500
+        { text: '나눔', color: '#22c55e' }, // green-500
+    ];
+
+    let numPlayers = players.length;
+    let goals = [];
+    let verticalLines = [];
+    let horizontalLines = [];
+    let isAnimating = false;
+    let resultsHistory = [];
+
+    // --- 초기화 및 그리기 관련 함수 ---
+
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    function setupGoals() {
+        goals = [];
+        for (let i = 0; i < numPlayers; i++) {
+            goals.push(goalOptions[i % goalOptions.length]);
+        }
+        shuffleArray(goals);
+    }
+    
+    function setupCanvas() {
+        const container = canvas.parentElement;
+        const dpr = window.devicePixelRatio || 1;
+        // 최소 너비를 800px로 설정하여 너무 좁아지지 않도록 함
+        const containerWidth = Math.max(container.clientWidth, 800);
+        
+        canvas.width = containerWidth * dpr;
+        // 높이는 고정값으로 설정
+        canvas.height = 500 * dpr; 
+        canvas.style.width = `${containerWidth}px`;
+        canvas.style.height = `500px`;
+        ctx.scale(dpr, dpr);
+    }
+
+    function generateLadder() {
+        verticalLines = [];
+        horizontalLines = [];
+        const canvasWidth = parseFloat(canvas.style.width);
+        const canvasHeight = parseFloat(canvas.style.height);
+        const startY = 60;
+        const endY = canvasHeight - 60;
+        const ladderHeight = endY - startY;
+        const gap = canvasWidth / (numPlayers + 1);
+
+        // 1. 수직선 생성
+        for (let i = 0; i < numPlayers; i++) {
+            const x = gap * (i + 1);
+            verticalLines.push({ x, startY, endY });
+        }
+
+        // 2. 수평선(가로줄) 생성
+        const numRungs = Math.floor(numPlayers * 10.0); // 가로줄 개수 2배로 증가
+        let availableRungs = [];
+        for (let i = 0; i < numPlayers - 1; i++) {
+            for (let j = 0; j < 24; j++) { // 각 칸에 최대 24개의 가로줄 후보
+                availableRungs.push({ leftIndex: i });
+            }
+        }
+        shuffleArray(availableRungs);
+        
+        let addedRungs = new Set();
+
+        for(let i=0; i<numRungs && i < availableRungs.length; i++) {
+            const rung = availableRungs[i];
+            const y = startY + (Math.random() * 0.8 + 0.1) * ladderHeight;
+            
+            // 겹치지 않는지 확인
+            let isOverlapping = false;
+            for(const h of horizontalLines){
+                if( (h.leftIndex === rung.leftIndex || h.leftIndex === rung.leftIndex - 1 || h.leftIndex === rung.leftIndex + 1) && Math.abs(h.y - y) < 20){
+                    isOverlapping = true;
+                    break;
+                }
+            }
+            
+            if(!isOverlapping){
+                const startX = verticalLines[rung.leftIndex].x;
+                const endX = verticalLines[rung.leftIndex + 1].x;
+                horizontalLines.push({ y, startX, endX, leftIndex: rung.leftIndex });
+            }
+        }
+
+        // y 좌표 기준으로 정렬
+        horizontalLines.sort((a, b) => a.y - b.y);
+    }
+
+    function draw() {
+        const canvasWidth = parseFloat(canvas.style.width);
+        const canvasHeight = parseFloat(canvas.style.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#cbd5e1'; // slate-300
+        ctx.font = 'bold 16px Noto Sans KR';
+        ctx.textAlign = 'center';
+
+        // 수직선 그리기
+        verticalLines.forEach(line => {
+            ctx.beginPath();
+            ctx.moveTo(line.x, line.startY);
+            ctx.lineTo(line.x, line.endY);
+            ctx.stroke();
+        });
+
+        // 수평선 그리기
+        horizontalLines.forEach(line => {
+            ctx.beginPath();
+            ctx.moveTo(line.startX, line.y);
+            ctx.lineTo(line.endX, line.y);
+            ctx.stroke();
+        });
+
+        // 참가자 및 결과 텍스트 그리기
+        players.forEach((player, i) => {
+            const x = verticalLines[i].x;
+            ctx.fillStyle = '#1e293b'; // slate-800
+            ctx.fillText(player, x, 40);
+        });
+
+        goals.forEach((goal, i) => {
+            const x = verticalLines[i].x;
+            ctx.fillStyle = goal.color;
+            ctx.fillText(goal.text, x, canvasHeight - 25);
+        });
+    }
+
+
+    // --- 게임 플레이 및 애니메이션 ---
+    function tracePath(startIndex) {
+        if (isAnimating) return;
+        isAnimating = true;
+        generateBtn.disabled = true;
+        canvas.style.opacity = '0.7';
+        resultDisplay.textContent = '결과 확인 중...';
+        
+        let currentIndex = startIndex;
+        let currentX = verticalLines[currentIndex].x;
+        let currentY = verticalLines[currentIndex].startY;
+        
+        const pathColor = goalOptions.find(opt => opt.text === goals[startIndex].text)?.color || '#334155';
+        
+        let path = [];
+        let y = currentY;
+
+        while(y < verticalLines[currentIndex].endY) {
+            path.push({x: verticalLines[currentIndex].x, y});
+            
+            // 다음 가로선 찾기
+            const nextRung = horizontalLines.find(rung => 
+                rung.y > y && (rung.leftIndex === currentIndex || rung.leftIndex === currentIndex - 1)
+            );
+
+            if (nextRung) {
+                // 가로선까지 이동
+                path.push({x: verticalLines[currentIndex].x, y: nextRung.y});
+                y = nextRung.y;
+
+                // 가로선 건너기
+                if (nextRung.leftIndex === currentIndex) { // 오른쪽으로 이동
+                    currentIndex++;
+                } else { // 왼쪽으로 이동
+                    currentIndex--;
+                }
+                path.push({x: verticalLines[currentIndex].x, y: nextRung.y});
+            } else {
+                // 끝까지 이동
+                path.push({x: verticalLines[currentIndex].x, y: verticalLines[currentIndex].endY});
+                y = verticalLines[currentIndex].endY;
+            }
+        }
+        
+        const finalIndex = currentIndex;
+
+        // 애니메이션 시작
+        let startTime = null;
+        const duration = 2000; // 2초
+
+        function animate(timestamp) {
+            if (!startTime) startTime = timestamp;
+            const progress = Math.min((timestamp - startTime) / duration, 1);
+            
+            draw(); // 배경 다시 그리기
+
+            ctx.strokeStyle = '#ef4444'; // 경로 색상을 항상 빨간색으로 고정
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            
+            const currentPathIndex = Math.floor(progress * (path.length - 1));
+            for (let i = 0; i <= currentPathIndex; i++) {
+                if (i === 0) ctx.moveTo(path[i].x, path[i].y);
+                else ctx.lineTo(path[i].x, path[i].y);
+            }
+            
+            // 현재 위치까지 부드럽게 그리기
+            if (progress < 1) {
+                const nextPoint = path[currentPathIndex + 1];
+                const prevPoint = path[currentPathIndex];
+                
+                // Check if nextPoint and prevPoint exist to prevent error at the end of animation
+                if(nextPoint && prevPoint) {
+                    const segmentProgress = (progress * (path.length - 1)) - currentPathIndex;
+                    const interX = prevPoint.x + (nextPoint.x - prevPoint.x) * segmentProgress;
+                    const interY = prevPoint.y + (nextPoint.y - prevPoint.y) * segmentProgress;
+                    ctx.lineTo(interX, interY);
+                }
+            }
+
+            ctx.stroke();
+
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                // 애니메이션 종료
+                isAnimating = false;
+                generateBtn.disabled = false;
+                canvas.style.opacity = '1';
+                const resultText = `${players[startIndex]} ➔ ${goals[finalIndex].text}`;
+                resultDisplay.textContent = resultText;
+                
+                // 결과 기록
+                if (!resultsHistory.find(r => r.player === players[startIndex])) {
+                    resultsHistory.push({ player: players[startIndex], result: goals[finalIndex].text, color: goals[finalIndex].color});
+                    updateResultsHistory();
+                }
+            }
+        }
+        requestAnimationFrame(animate);
+    }
+    
+    function updateResultsHistory() {
+        resultsList.innerHTML = '';
+        resultsHistory.forEach(res => {
+            const item = document.createElement('div');
+            item.className = 'result-item p-2 rounded-md';
+            item.style.backgroundColor = `${res.color}20`; // 20은 투명도
+            item.innerHTML = `
+                <span class="font-medium text-slate-700">${res.player}</span><br>
+                <span class="font-bold" style="color:${res.color}">${res.result}</span>
+            `;
+            resultsList.appendChild(item);
+        });
+    }
+
+    // --- 이벤트 리스너 ---
+    generateBtn.addEventListener('click', () => {
+        if(isAnimating) return;
+        init();
+        resultDisplay.textContent = '새로운 사다리가 생성되었습니다.';
+        resultsHistory = [];
+        updateResultsHistory();
+    });
+
+    canvas.addEventListener('click', (e) => {
+        if (isAnimating) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        
+        const gap = parseFloat(canvas.style.width) / (numPlayers + 1);
+        const clickedIndex = Math.floor(x / gap) -1;
+        
+        if (clickedIndex >= 0 && clickedIndex < numPlayers) {
+            // Check if click is near the top name
+            const y = e.clientY - rect.top;
+            if (y < 60) {
+                 tracePath(clickedIndex);
+            }
+        }
+    });
+    
+    window.addEventListener('resize', () => {
+        if(isAnimating) return;
+        init();
+    });
+
+    // --- 초기 실행 ---
+    function init() {
+        setupCanvas();
+        setupGoals();
+        generateLadder();
+        draw();
+    }
+
+    init();
+</script>
+
+</body>
+</html>
+
+
+
